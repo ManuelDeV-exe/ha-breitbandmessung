@@ -247,13 +247,22 @@ def scheduler():
 
 
 PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font:15px system-ui;background:#f5f7f9;color:#202832;margin:18px}main{max-width:1100px;margin:auto}
-section{background:white;padding:18px;margin:12px 0;border-radius:12px;box-shadow:0 1px 4px #0002}
-table{border-collapse:collapse;width:100%}td,th{padding:9px;text-align:left;border-bottom:1px solid #ddd}
-.wrap{overflow-x:auto}input,select{padding:9px;border-radius:6px;border:1px solid #bbb;margin:5px}
-button,.btn{border:0;border-radius:6px;padding:10px 14px;background:#178ac9;color:white;cursor:pointer;text-decoration:none}
-.danger{background:#bd2929}.grid{display:flex;gap:10px;flex-wrap:wrap}.metric{background:#eaf4fb;border-radius:9px;padding:15px;flex:1;min-width:180px}
-.metric b{display:block;font-size:23px}</style></head><body><main><h2>Breitbandmessung Logger</h2>
+<style>
+:root{color-scheme:light;--bg:#f5f7f9;--fg:#202832;--panel:#fff;--line:#d5dbe1;--input:#fff;--metric:#eaf4fb;--muted:#586575;--blue:#168acb;--green:#24a375;--grid:#dbe2e9}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#111820;--fg:#e6edf4;--panel:#1c2732;--line:#354454;--input:#233241;--metric:#22384b;--muted:#adbac8;--blue:#5cbaff;--green:#61d6a6;--grid:#354454}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#111820;--fg:#e6edf4;--panel:#1c2732;--line:#354454;--input:#233241;--metric:#22384b;--muted:#adbac8;--blue:#5cbaff;--green:#61d6a6;--grid:#354454}
+*{box-sizing:border-box}body{font:15px system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:18px}main{max-width:1150px;margin:auto}
+section{background:var(--panel);padding:18px;margin:12px 0;border-radius:12px;box-shadow:0 1px 4px #0002}
+table{border-collapse:collapse;width:100%}td,th{padding:9px;text-align:left;border-bottom:1px solid var(--line)}
+.wrap{overflow-x:auto}input,select{padding:9px;border-radius:6px;border:1px solid var(--line);margin:5px;background:var(--input);color:var(--fg)}
+button,.btn{border:0;border-radius:6px;padding:10px 14px;background:#167db8;color:white;cursor:pointer;text-decoration:none;display:inline-block}
+button:disabled{opacity:.5;cursor:not-allowed}.danger{background:#bd2929}
+.grid{display:flex;gap:10px;flex-wrap:wrap}.metric{background:var(--metric);border-radius:9px;padding:15px;flex:1;min-width:180px}
+.metric b{display:block;font-size:23px}.head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.small{color:var(--muted);font-size:13px}.charts{display:grid;grid-template-columns:1fr;gap:12px}
+canvas{width:100%;height:235px;display:block} .chartbox{border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.chartbox h4{margin:4px 0 8px}.stats{margin:12px 0}.stats strong{font-size:19px}
+</style></head><body><main><div class="head"><h2>Breitbandmessung Logger</h2><button type="button" id="themeButton" onclick="toggleTheme()" aria-label="Darstellung umschalten">Darstellung: Auto</button></div>
 <section><p><b>Status:</b> {{status.message}}</p><p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
 <form method="post" action="run"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
 <a class="btn" href="export.csv">CSV exportieren</a></form></section>
@@ -273,6 +282,14 @@ Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100
 <div class="metric">Ping Ist <b>{{'%.1f'|format(last.ping_ms)}} ms</b>Kein Sollwert festgelegt</div></div>
 <p><small>Letzte erfolgreiche Messung: {{last.started_at[:19].replace('T',' ')}}</small></p>
 {% else %}<p>Noch keine erfolgreiche Messung vorhanden.</p>{% endif %}</section>
+<section><div class="head"><h3>Auswertungen</h3><label>Zeitraum <select id="period" onchange="renderAnalytics()">
+<option value="7">7 Tage</option><option value="30" selected>30 Tage</option><option value="90">90 Tage</option><option value="0">Gesamt</option>
+</select></label></div>
+<div id="analysisStats" class="grid stats" aria-live="polite"></div>
+<div class="charts"><div class="chartbox"><h4>Download und Upload (Mbit/s)</h4><canvas id="speedChart" role="img" aria-label="Download- und Upload-Verlauf"></canvas><small>Blau: Download · Grün: Upload · Zeitachse: Messdatum</small></div>
+<div class="chartbox"><h4>Ping (ms)</h4><canvas id="pingChart" role="img" aria-label="Ping-Verlauf"></canvas></div></div>
+<p class="small">Die Statistik berücksichtigt erfolgreiche Messungen im gewählten Zeitraum. Fehler werden in der Erfolgsquote mitgezählt. Die Diagramme zeigen gemessene Werte, keine vertragliche Bewertung.</p>
+</section>
 <section class="wrap"><h3>Messprotokoll ({{total}} Datensätze)</h3><table><thead><tr><th>Zeit</th><th>Quelle</th><th>Download</th><th>Upload</th><th>Ping</th><th>Status</th><th>Löschen</th></tr></thead>
 <tbody>{% for r in rows %}<tr><td>{{r.started_at[:19].replace('T',' ')}}</td><td>{{r.source}}</td>
 <td>{{'%.2f'|format(r.download_mbps) if r.download_mbps is not none else '–'}}</td>
@@ -283,8 +300,61 @@ Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100
 <p><small>Nur die letzten 100 werden angezeigt, CSV exportiert alle.</small></p>
 <form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE gespeicherten Messungen endgültig löschen? Eine gerade laufende Messung kann danach neu erscheinen.')">
 <button class="danger">Alle Messungen löschen</button></form></section>
-<script>function tarifwahl(){let t=document.getElementById('tariff'),o=t.selectedOptions[0];
-if(t.value!=='custom'){document.getElementById('down').value=o.dataset.down;document.getElementById('up').value=o.dataset.up;}}</script>
+<script>
+const HISTORY = {{ history|tojson }};
+const TARGET = {{ tariff|tojson }};
+function themePreference(){try{return localStorage.getItem('bbm_theme')||'auto'}catch(e){return 'auto'}}
+function setTheme(mode){if(mode==='auto'){document.documentElement.removeAttribute('data-theme')}else{document.documentElement.setAttribute('data-theme',mode)}
+document.getElementById('themeButton').textContent='Darstellung: '+(mode==='dark'?'Dunkel':mode==='light'?'Hell':'Auto');
+window.requestAnimationFrame(renderAnalytics)}
+function toggleTheme(){const modes=['auto','light','dark'];const current=themePreference();const next=modes[(modes.indexOf(current)+1)%3];try{localStorage.setItem('bbm_theme',next)}catch(e){}setTheme(next)}
+function tarifwahl(){let t=document.getElementById('tariff'),o=t.selectedOptions[0];
+if(t.value!=='custom'){document.getElementById('down').value=o.dataset.down;document.getElementById('up').value=o.dataset.up;}}
+function nfmt(n,d=1){return Number(n).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function drawChart(id,rows,keys){
+const canvas=document.getElementById(id),wrap=canvas.parentElement;
+const width=Math.max(300,wrap.clientWidth-24),height=235,dpr=window.devicePixelRatio||1;
+canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
+const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
+const dark=getComputedStyle(document.body).color;
+const css=getComputedStyle(document.documentElement);
+const grid=css.getPropertyValue('--grid').trim(),blue=css.getPropertyValue('--blue').trim(),green=css.getPropertyValue('--green').trim();
+const left=55,right=16,top=16,bottom=36,w=width-left-right,h=height-top-bottom;
+ctx.clearRect(0,0,width,height);ctx.font='12px system-ui';ctx.textBaseline='middle';
+if(rows.length===0){ctx.fillStyle=dark;ctx.fillText('Keine erfolgreichen Messungen in diesem Zeitraum',left,100);return}
+const values=rows.flatMap(r=>keys.map(k=>Number(r[k])||0));
+const max=Math.max(1,Math.max(...values)*1.12);
+for(let i=0;i<=4;i++){const y=top+h-h*i/4;ctx.strokeStyle=grid;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left+w,y);ctx.stroke();
+ctx.fillStyle=dark;ctx.textAlign='right';ctx.fillText(nfmt(max*i/4,0),left-9,y)}
+ctx.textAlign='left';
+const first=rows[0].timestamp,last=rows[rows.length-1].timestamp;
+const xmin=Date.parse(first),xmax=Date.parse(last);
+function xAt(row,i){return rows.length===1?left+w/2:left+w*((Date.parse(row.timestamp)-xmin)/(xmax-xmin||1))}
+function yAt(value){return top+h-h*(Number(value)||0)/max}
+keys.forEach((key,idx)=>{ctx.strokeStyle=idx===0?blue:green;ctx.lineWidth=2.3;ctx.beginPath();
+rows.forEach((r,i)=>{const x=xAt(r,i),y=yAt(r[key]);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
+ctx.stroke();if(rows.length<=40)rows.forEach((r,i)=>{ctx.beginPath();ctx.arc(xAt(r,i),yAt(r[key]),2.8,0,2*Math.PI);ctx.fillStyle=ctx.strokeStyle;ctx.fill()})});
+ctx.fillStyle=dark;ctx.textAlign='left';ctx.fillText(first.slice(0,10),left,top+h+19);
+ctx.textAlign='right';ctx.fillText(last.slice(0,10),left+w,top+h+19);
+}
+function renderAnalytics(){
+const period=Number(document.getElementById('period').value),now=Date.now();
+const records=HISTORY.filter(r=>period===0||Date.parse(r.timestamp)>=now-period*86400000);
+const valid=records.filter(r=>r.status==='ok'&&r.download!==null&&r.upload!==null&&r.ping!==null);
+const stats=document.getElementById('analysisStats');
+if(valid.length){const avg=k=>valid.reduce((s,r)=>s+Number(r[k]),0)/valid.length;
+const avgDl=avg('download'),avgUl=avg('upload'),avgPing=avg('ping');
+stats.innerHTML='<div class="metric">Ø Download <strong>'+nfmt(avgDl,2)+' Mbit/s</strong><div>'+nfmt(avgDl/TARGET.download*100,1)+' % des Solls</div></div>'+
+'<div class="metric">Ø Upload <strong>'+nfmt(avgUl,2)+' Mbit/s</strong><div>'+nfmt(avgUl/TARGET.upload*100,1)+' % des Solls</div></div>'+
+'<div class="metric">Ø Ping <strong>'+nfmt(avgPing,1)+' ms</strong></div>'+
+'<div class="metric">Erfolgsquote <strong>'+nfmt(valid.length/records.length*100,1)+' %</strong><div>'+valid.length+' von '+records.length+' Tests</div></div>';
+}else{stats.textContent='Noch keine erfolgreichen Messungen im gewählten Zeitraum ('+records.length+' Versuche).'}
+drawChart('speedChart',valid,['download','upload']);drawChart('pingChart',valid,['ping']);
+}
+setTheme(themePreference());
+window.addEventListener('resize',renderAnalytics);
+if(window.matchMedia){const mq=window.matchMedia('(prefers-color-scheme: dark)');if(mq.addEventListener)mq.addEventListener('change',renderAnalytics)}
+</script>
 </main></body></html>"""
 
 
@@ -294,8 +364,14 @@ def home():
         rows = conn.execute("SELECT * FROM measurements ORDER BY id DESC LIMIT 100").fetchall()
         last = conn.execute("SELECT * FROM measurements WHERE status='ok' ORDER BY id DESC LIMIT 1").fetchone()
         total = conn.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
+        history_rows = conn.execute("""SELECT started_at, status, download_mbps,
+            upload_mbps, ping_ms FROM measurements ORDER BY id""").fetchall()
+    history = [{"timestamp": r["started_at"], "status": r["status"],
+                "download": r["download_mbps"], "upload": r["upload_mbps"],
+                "ping": r["ping_ms"]} for r in history_rows]
     return render_template_string(PAGE, cfg=settings(), status=status, rows=rows,
-                                  last=last, total=total, tariff=get_target(), tariffs=TARIFFS)
+                                  last=last, total=total, tariff=get_target(),
+                                  tariffs=TARIFFS, history=history)
 
 
 @app.post("/target")
