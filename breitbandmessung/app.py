@@ -281,7 +281,7 @@ Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100
 <td><form method="post" action="delete/{{r.id}}" onsubmit="return confirm('Datensatz endgültig löschen?')">
 <button class="danger">Löschen</button></form></td></tr>{% endfor %}</tbody></table>
 <p><small>Nur die letzten 100 werden angezeigt, CSV exportiert alle.</small></p>
-<form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE Messungen endgültig löschen?')">
+<form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE gespeicherten Messungen endgültig löschen? Eine gerade laufende Messung kann danach neu erscheinen.')">
 <button class="danger">Alle Messungen löschen</button></form></section>
 <script>function tarifwahl(){let t=document.getElementById('tariff'),o=t.selectedOptions[0];
 if(t.value!=='custom'){document.getElementById('down').value=o.dataset.down;document.getElementById('up').value=o.dataset.up;}}</script>
@@ -320,19 +320,19 @@ def save_target():
 
 @app.post("/delete/<int:record_id>")
 def delete_one(record_id):
-    if status["running"]:
-        abort(409)
+    # Existing rows can be removed while a web test is in progress.
     with connection() as conn:
-        conn.execute("DELETE FROM measurements WHERE id=?", (record_id,))
+        removed = conn.execute("DELETE FROM measurements WHERE id=?", (record_id,)).rowcount
+    log.info("Measurement delete requested: id=%s, deleted=%s", record_id, removed)
     return redirect("../", code=303)
 
 
 @app.post("/delete-all")
 def delete_all():
-    if status["running"]:
-        abort(409)
+    # Tests still in progress are not yet stored and may appear after clearing.
     with connection() as conn:
-        conn.execute("DELETE FROM measurements")
+        removed = conn.execute("DELETE FROM measurements").rowcount
+    log.info("All stored measurements deleted: %s rows", removed)
     return redirect("./", code=303)
 
 
