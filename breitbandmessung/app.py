@@ -38,6 +38,7 @@ def settings():
 
 TARIFFS = [
  ("custom","Benutzerdefiniert",0,0),
+ ("leonet_home300","LEONET Home 300 (300/150)",300,150),
  ("telekom_m","Telekom MagentaZuhause M",50,10),
  ("telekom_l","Telekom MagentaZuhause L",100,40),
  ("telekom_xl","Telekom MagentaZuhause XL",250,40),
