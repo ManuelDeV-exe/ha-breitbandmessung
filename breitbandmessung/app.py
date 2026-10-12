@@ -282,7 +282,7 @@ canvas{width:100%;height:235px;display:block} .chartbox{border:1px solid var(--l
 </style></head><body><main><div class="head"><h2>Breitbandmessung Logger</h2><button type="button" id="themeButton" onclick="toggleTheme()" aria-label="Darstellung umschalten">Darstellung: Auto</button></div>
 <section><p><b>Status:</b> {{status.message}}</p><p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
 {% if admin %}<form method="post" action="run"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
-<a class="btn" href="export.csv">CSV exportieren</a></form></section>
+</form>{% endif %}<a class="btn" href="export.csv">CSV exportieren</a></section>
 <section><h3>Soll-/Ist-Vergleich</h3>{% if admin %}<form method="post" action="target"><input type="hidden" name="csrf_token" value="{{csrf_token}}">
 <label>Tarif <select id="tariff" name="tariff" onchange="tarifwahl()">
 {% for t in tariffs %}<option value="{{t[0]}}" data-down="{{t[2]}}" data-up="{{t[3]}}" {% if t[0]==tariff.tariff %}selected{% endif %}>{{t[1]}}</option>{% endfor %}
