@@ -466,4 +466,6 @@ if __name__ == "__main__":
         run_test("startup")
     threading.Thread(target=scheduler, daemon=True).start()
     MqttBridge(connection, get_target, run_test).start()
-    app.run(host="0.0.0.0", port=8099, threaded=True)
+    from waitress import serve
+    log.info("Starte Waitress WSGI auf Port 8099")
+    serve(app, host="0.0.0.0", port=8099, threads=8)
