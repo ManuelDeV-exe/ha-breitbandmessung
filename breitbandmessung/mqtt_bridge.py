@@ -18,7 +18,7 @@ DEVICE = {"identifiers": ["breitbandmessung_logger"],
           "model": "Breitbandmessung Webtest"}
 
 SENSORS = [
-    ("download", "Download", "Mbit/s", "measurement", "data_rate"),
+    ("download", "Download", "Mbit/s", "measurement", None),
     ("upload", "Upload", "Mbit/s", "measurement", "data_rate"),
     ("ping", "Ping", "ms", "measurement", None),
     ("download_percent", "Download Soll erreicht", "%", "measurement", None),
@@ -113,6 +113,12 @@ class MqttBridge:
                 self.client = client
                 client.loop_start()
                 try:
+                    for _ in range(20):
+                        if client.is_connected():
+                            break
+                        time.sleep(0.5)
+                    if not client.is_connected():
+                        raise RuntimeError('MQTT-Verbindungsaufbau fehlgeschlagen')
                     while client.is_connected():
                         self.publish_state()
                         time.sleep(15)
