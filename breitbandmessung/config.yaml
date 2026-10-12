@@ -1,5 +1,5 @@
 name: Breitbandmessung Logger
-version: "0.3.0"
+version: "0.3.1"
 slug: breitbandmessung_logger
 description: Automatische Messungen auf breitbandmessung.de mit SQLite und CSV
 arch:
@@ -11,6 +11,7 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:speedometer
 panel_title: Breitbandmessung
+panel_admin: false
 options:
   tests_per_day: 4
   timezone: Europe/Berlin
