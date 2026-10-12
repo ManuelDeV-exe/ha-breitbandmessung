@@ -102,7 +102,7 @@ def measure(timeout_minutes):
 
             def numeric(key):
                 value = record[key].strip().replace(",", ".")
-                found = re.search(r"-?\\d+(?:\\.\\d+)?", value)
+                found = re.search(r"-?\d+(?:\.\d+)?", value)
                 if not found:
                     raise ValueError(f"Ungültiger Messwert: {key}={value}")
                 return float(found.group())
