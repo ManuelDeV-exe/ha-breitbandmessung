@@ -1,0 +1,23 @@
+name: Breitbandmessung Logger
+version: "0.1.0"
+slug: breitbandmessung_logger
+description: Automatische Messungen auf breitbandmessung.de mit SQLite und CSV
+arch:
+  - amd64
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:speedometer
+panel_title: Breitbandmessung
+options:
+  tests_per_day: 4
+  timezone: Europe/Berlin
+  run_on_start: false
+  timeout_minutes: 12
+schema:
+  tests_per_day: int(1,24)
+  timezone: str
+  run_on_start: bool
+  timeout_minutes: int(3,30)
