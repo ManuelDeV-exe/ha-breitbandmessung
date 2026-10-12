@@ -31,3 +31,11 @@ Die Browserinteraktion orientiert sich konzeptionell an https://github.com/Shnez
 - Die neueste importierte Fehler-CSV enthält einen erfolgreichen Test (30,69/5,30 Mbit/s); die früheren Fehlermeldungen stammen vom verdeckten Button. Der Workaround bleibt aktiv; die Webautomation muss weiterhin praktisch überprüft werden.
 
 Quellen zu Beispieltarifen: [Telekom](https://www.telekom.de/agb/downloads/55504.pdf), [Vodafone](https://www.vodafone.de/media/downloads/pdf/KH_09868_screen_2610.pdf), [O2](https://www.o2online.de/internet-festnetz/internetanschluss/).
+
+## Neu in 0.3.0: Dark Mode und Diagramme
+
+- Darstellung **Auto / Hell / Dunkel**. Im Auto-Modus wird die Betriebssystem- bzw. Browser-Einstellung verwendet; die manuelle Wahl wird lokal im Browser gespeichert.
+- Zwei interaktive Zeitraumfilter-Diagramme ohne externe JavaScript-Abhängigkeiten: **Download + Upload in Mbit/s** und **Ping in ms**.
+- Zeiträume **7 / 30 / 90 Tage / Gesamt** und Kennzahlen zu Durchschnitt, Sollwerterreichung und Erfolgsquote.
+- Diagramme basieren auf den in SQLite vorhandenen Datensätzen und berücksichtigen im Zeitverlauf nur erfolgreiche Messungen.
+- Die Schaltfläche **Löschen** kann seit 0.2.2 auch während einer laufenden Messung genutzt werden.
