@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import Flask, Response, jsonify, redirect, render_template_string
+from flask import Flask, Response, jsonify, redirect, render_template_string, request, abort
 
 DATA = Path(os.environ.get("BBM_DATA", "/data"))
 DATA.mkdir(parents=True, exist_ok=True)
@@ -35,6 +35,31 @@ def settings():
     options["timeout_minutes"] = max(3, min(30, int(options["timeout_minutes"])))
     ZoneInfo(options["timezone"])
     return options
+
+TARIFFS = [
+ ("custom","Benutzerdefiniert",0,0),
+ ("telekom_m","Telekom MagentaZuhause M",50,10),
+ ("telekom_l","Telekom MagentaZuhause L",100,40),
+ ("telekom_xl","Telekom MagentaZuhause XL",250,40),
+ ("vodafone_100","Vodafone Kabel 100",100,50),
+ ("vodafone_250","Vodafone Kabel 250",250,50),
+ ("vodafone_500","Vodafone Kabel 500",500,50),
+ ("vodafone_1000","Vodafone Kabel 1000",1000,50),
+ ("o2_m","O2 Home M",150,75),
+ ("o2_l","O2 Home L",300,75),
+ ("o2_xl","O2 Home XL",600,75),
+ ("o2_xxl","O2 Home XXL",1000,75),
+]
+TARGET_PATH = DATA / "target.json"
+
+def get_target():
+    result = {"tariff":"custom", "download":300.0, "upload":150.0}
+    if TARGET_PATH.exists():
+        try:
+            result.update(json.loads(TARGET_PATH.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            log.warning("Ungültige Tarif-Konfiguration")
+    return result
 
 
 def connection():
@@ -220,37 +245,94 @@ def scheduler():
         time.sleep(30)
 
 
-PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>body{font-family:system-ui,sans-serif;margin:24px;background:#f6f8fa;color:#18212b}
-main{max-width:1000px;margin:auto}.panel{background:white;padding:18px;border-radius:12px;
-margin:12px 0;box-shadow:0 1px 5px #0001}table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:9px;border-bottom:1px solid #ddd}
-button,a.action{background:#1684c6;color:white;border:0;padding:10px 14px;
-border-radius:7px;cursor:pointer;text-decoration:none}small{color:#666}.scroll{overflow:auto}
-</style></head><body><main><h2>Breitbandmessung Logger</h2>
-<div class="panel"><p><b>Status:</b> {{status.message}}</p>
-<p><b>Messungen pro Tag:</b> {{cfg.tests_per_day}} · <b>Zeitzone:</b> {{cfg.timezone}}</p>
-<form method="post" action="run"><button type="submit" {% if status.running %}disabled{% endif %}>
-Jetzt messen</button> <a class="action" href="export.csv">CSV exportieren</a></form>
-<p><small>Messhäufigkeit im Add-on unter Konfiguration einstellen.</small></p></div>
-<div class="panel scroll"><h3>Letzte Messungen</h3><table><thead><tr>
-<th>Zeit</th><th>Quelle</th><th>Download</th><th>Upload</th><th>Ping</th><th>Status</th>
-</tr></thead><tbody>{% for r in rows %}<tr><td>{{r.started_at[:19].replace('T',' ')}}</td>
-<td>{{r.source}}</td>
+PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font:15px system-ui;background:#f5f7f9;color:#202832;margin:18px}main{max-width:1100px;margin:auto}
+section{background:white;padding:18px;margin:12px 0;border-radius:12px;box-shadow:0 1px 4px #0002}
+table{border-collapse:collapse;width:100%}td,th{padding:9px;text-align:left;border-bottom:1px solid #ddd}
+.wrap{overflow-x:auto}input,select{padding:9px;border-radius:6px;border:1px solid #bbb;margin:5px}
+button,.btn{border:0;border-radius:6px;padding:10px 14px;background:#178ac9;color:white;cursor:pointer;text-decoration:none}
+.danger{background:#bd2929}.grid{display:flex;gap:10px;flex-wrap:wrap}.metric{background:#eaf4fb;border-radius:9px;padding:15px;flex:1;min-width:180px}
+.metric b{display:block;font-size:23px}</style></head><body><main><h2>Breitbandmessung Logger</h2>
+<section><p><b>Status:</b> {{status.message}}</p><p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
+<form method="post" action="run"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
+<a class="btn" href="export.csv">CSV exportieren</a></form></section>
+<section><h3>Soll-/Ist-Vergleich</h3><form method="post" action="target">
+<label>Tarif <select id="tariff" name="tariff" onchange="tarifwahl()">
+{% for t in tariffs %}<option value="{{t[0]}}" data-down="{{t[2]}}" data-up="{{t[3]}}" {% if t[0]==tariff.tariff %}selected{% endif %}>{{t[1]}}</option>{% endfor %}
+</select></label>
+<label>Download Soll (Mbit/s) <input id="down" name="download" type="number" step="0.01" min="0.01" max="100000" required value="{{tariff.download}}"></label>
+<label>Upload Soll (Mbit/s) <input id="up" name="upload" type="number" step="0.01" min="0.01" max="100000" required value="{{tariff.upload}}"></label>
+<button>Tarif speichern</button></form>
+<p><small>Tarife zeigen beispielhafte beworbene Maximalgeschwindigkeiten. Für verbindliche Werte deinen Vertrag bzw. das Produktinformationsblatt prüfen.</small></p>
+{% if last %}<div class="grid">
+<div class="metric">Download Ist <b>{{'%.2f'|format(last.download_mbps)}} Mbit/s</b>
+Soll {{tariff.download}} · {{'%.1f'|format(last.download_mbps / tariff.download * 100)}} % erreicht</div>
+<div class="metric">Upload Ist <b>{{'%.2f'|format(last.upload_mbps)}} Mbit/s</b>
+Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100)}} % erreicht</div>
+<div class="metric">Ping Ist <b>{{'%.1f'|format(last.ping_ms)}} ms</b>Kein Sollwert festgelegt</div></div>
+<p><small>Letzte erfolgreiche Messung: {{last.started_at[:19].replace('T',' ')}}</small></p>
+{% else %}<p>Noch keine erfolgreiche Messung vorhanden.</p>{% endif %}</section>
+<section class="wrap"><h3>Messprotokoll ({{total}} Datensätze)</h3><table><thead><tr><th>Zeit</th><th>Quelle</th><th>Download</th><th>Upload</th><th>Ping</th><th>Status</th><th>Löschen</th></tr></thead>
+<tbody>{% for r in rows %}<tr><td>{{r.started_at[:19].replace('T',' ')}}</td><td>{{r.source}}</td>
 <td>{{'%.2f'|format(r.download_mbps) if r.download_mbps is not none else '–'}}</td>
 <td>{{'%.2f'|format(r.upload_mbps) if r.upload_mbps is not none else '–'}}</td>
-<td>{{'%.1f'|format(r.ping_ms) if r.ping_ms is not none else '–'}}</td>
-<td title="{{r.error or ''}}">{{r.status}}</td></tr>{% endfor %}</tbody></table>
-<p><small>Download/Upload in Mbit/s, Ping in ms. Letzte 100 Einträge.</small></p>
-</div></main></body></html>"""
+<td>{{'%.1f'|format(r.ping_ms) if r.ping_ms is not none else '–'}}</td><td title="{{r.error or ''}}">{{r.status}}</td>
+<td><form method="post" action="delete/{{r.id}}" onsubmit="return confirm('Datensatz endgültig löschen?')">
+<button class="danger">Löschen</button></form></td></tr>{% endfor %}</tbody></table>
+<p><small>Nur die letzten 100 werden angezeigt, CSV exportiert alle.</small></p>
+<form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE Messungen endgültig löschen?')">
+<button class="danger">Alle Messungen löschen</button></form></section>
+<script>function tarifwahl(){let t=document.getElementById('tariff'),o=t.selectedOptions[0];
+if(t.value!=='custom'){document.getElementById('down').value=o.dataset.down;document.getElementById('up').value=o.dataset.up;}}</script>
+</main></body></html>"""
 
 
 @app.get("/")
 def home():
     with connection() as conn:
         rows = conn.execute("SELECT * FROM measurements ORDER BY id DESC LIMIT 100").fetchall()
-    return render_template_string(PAGE, cfg=settings(), status=status, rows=rows)
+        last = conn.execute("SELECT * FROM measurements WHERE status='ok' ORDER BY id DESC LIMIT 1").fetchone()
+        total = conn.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
+    return render_template_string(PAGE, cfg=settings(), status=status, rows=rows,
+                                  last=last, total=total, tariff=get_target(), tariffs=TARIFFS)
+
+
+@app.post("/target")
+def save_target():
+    key = request.form.get("tariff")
+    matching = next((t for t in TARIFFS if t[0] == key), None)
+    if not matching:
+        abort(400)
+    try:
+        down = float(request.form.get("download", "0"))
+        up = float(request.form.get("upload", "0"))
+    except ValueError:
+        abort(400)
+    if not (0 < down <= 100000 and 0 < up <= 100000):
+        abort(400)
+    # Predefined speeds are fixed; manual numbers apply to Custom.
+    if key != "custom":
+        down, up = matching[2], matching[3]
+    TARGET_PATH.write_text(json.dumps({"tariff":key,"download":down,"upload":up}), encoding="utf-8")
+    return redirect("./", code=303)
+
+
+@app.post("/delete/<int:record_id>")
+def delete_one(record_id):
+    if status["running"]:
+        abort(409)
+    with connection() as conn:
+        conn.execute("DELETE FROM measurements WHERE id=?", (record_id,))
+    return redirect("../", code=303)
+
+
+@app.post("/delete-all")
+def delete_all():
+    if status["running"]:
+        abort(409)
+    with connection() as conn:
+        conn.execute("DELETE FROM measurements")
+    return redirect("./", code=303)
 
 
 @app.post("/run")
