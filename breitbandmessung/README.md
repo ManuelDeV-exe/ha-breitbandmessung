@@ -39,3 +39,35 @@ Quellen zu Beispieltarifen: [Telekom](https://www.telekom.de/agb/downloads/55504
 - Zeiträume **7 / 30 / 90 Tage / Gesamt** und Kennzahlen zu Durchschnitt, Sollwerterreichung und Erfolgsquote.
 - Diagramme basieren auf den in SQLite vorhandenen Datensätzen und berücksichtigen im Zeitverlauf nur erfolgreiche Messungen.
 - Die Schaltfläche **Löschen** kann seit 0.2.2 auch während einer laufenden Messung genutzt werden.
+
+## 0.4.0 – Benutzerrechte und Home-Assistant-Dashboard
+
+### Rollen in der Add-on-Weboberfläche
+Die Weboberfläche ist weiterhin für alle berechtigten Home-Assistant-Nutzer über **Ingress** sichtbar.
+Sie erkennt die HA-Benutzer-ID über den vom Supervisor gesetzten `X-Remote-User-Id`-Header und fragt die Benutzergruppen bei Home Assistant ab. Nur **Administratoren** können hier:
+- Messungen manuell starten,
+- Tarif/Sollwerte ändern,
+- einzelne bzw. alle Messdaten löschen.
+
+Normale Benutzer sehen die Werte, Tabellen, Statistiken und Diagramme (und können die CSV exportieren). Geschützte Aktionen sind serverseitig mit 403 gesperrt, selbst bei direktem HTTP-POST. Bei fehlender Rollenprüfung werden **keine Administratorrechte** vergeben. Die Weboberfläche ist nur über Home Assistant Ingress zugänglich.
+
+### Dashboard-Integration mittels MQTT
+Das Add-on veröffentlicht automatisch MQTT Discovery-Entitäten, wenn ein kompatibler MQTT-Dienst vorhanden ist. Installiere dafür bei Bedarf das **Mosquitto Broker Add-on** und richte unter **Einstellungen → Geräte & Dienste** die **MQTT-Integration** ein.
+
+Erstellt werden:
+- `sensor.breitbandmessung_download`, `sensor.breitbandmessung_upload`
+- `sensor.breitbandmessung_ping`
+- `sensor.breitbandmessung_download_percent`, `sensor.breitbandmessung_upload_percent`
+- `sensor.breitbandmessung_tests`
+- `button.breitbandmessung_messung_starten`
+
+Die realen Entitäts-IDs können bei bestehenden Einträgen oder Namenskonflikten abweichen. Prüfe sie unter **Entwicklerwerkzeuge → Zustände**.
+
+Für einen direkt einsetzbaren Dashboard-Baustein siehe [dashboard.yaml](../dashboard.yaml). Im Dashboard **Bearbeiten → Karte hinzufügen → Manuell** und den YAML-Inhalt einfügen.
+
+**Rechtehinweis:** Der MQTT-Button wird von Home Assistant selbst bereitgestellt. Die Berechtigung, ihn im Dashboard zu bedienen, wird über die Home-Assistant-Entitäts-/Dashboardrechte geregelt. Er ist **nicht automatisch auf Administratoren beschränkt**. In der Add-on-Weboberfläche ist der manuelle Start dagegen adminpflichtig. Wenn Standardbenutzer überhaupt keine Tests starten sollen, den MQTT-Button nur auf einem administrativen Dashboard platzieren und Zugriffsrechte entsprechend setzen.
+
+Die MQTT-Anbindung ist optional. Ohne MQTT bleiben die Add-on-Oberfläche, SQLite-Speicherung und CSV-Export nutzbar. Bereits gespeicherte Messdaten bleiben bei einem normalen Update erhalten.
+
+### Hinweise zur Absicherung
+Keine zusätzlichen Netzwerkports am Host veröffentlichen. Die Administrationsberechtigung wird serverseitig anhand der Benutzer-ID geprüft; eigene reverse proxies dürfen die Ingress-Header nicht ungeprüft selbst setzen. Dieses Release wurde noch nicht in einer realen Home-Assistant-Installation durchgetestet.
