@@ -1,6 +1,7 @@
 """Unofficial Home Assistant add-on: browser-based breitbandmessung.de measurements."""
 import csv
 import io
+import secrets
 import json
 import logging
 import os
@@ -13,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import Flask, Response, jsonify, redirect, render_template_string, request, abort
+from flask import Flask, Response, jsonify, redirect, render_template_string, request, abort, g
 
 DATA = Path(os.environ.get("BBM_DATA", "/data"))
 DATA.mkdir(parents=True, exist_ok=True)
@@ -22,6 +23,22 @@ OPTIONS = DATA / "options.json"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("breitbandmessung")
 app = Flask(__name__)
+from ha_auth import is_admin
+from mqtt_bridge import MqttBridge
+CSRF_TOKEN = secrets.token_urlsafe(32)
+
+@app.before_request
+def check_ingress_access():
+    user_id = request.headers.get("X-Remote-User-Id")
+    if not user_id:
+        abort(403, "Nur über Home Assistant Ingress verfügbar")
+    g.is_admin = is_admin(user_id)
+    if request.endpoint in {"save_target", "delete_one", "delete_all", "manual"} and not g.is_admin:
+        abort(403, "Administratorrechte erforderlich")
+    if request.method == "POST":
+        if not secrets.compare_digest(request.form.get("csrf_token", ""), CSRF_TOKEN):
+            abort(403, "Formular ungültig")
+
 lock = threading.Lock()
 status = {"running": False, "message": "Bereit", "last_attempt": None}
 
@@ -264,15 +281,15 @@ canvas{width:100%;height:235px;display:block} .chartbox{border:1px solid var(--l
 .chartbox h4{margin:4px 0 8px}.stats{margin:12px 0}.stats strong{font-size:19px}
 </style></head><body><main><div class="head"><h2>Breitbandmessung Logger</h2><button type="button" id="themeButton" onclick="toggleTheme()" aria-label="Darstellung umschalten">Darstellung: Auto</button></div>
 <section><p><b>Status:</b> {{status.message}}</p><p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
-<form method="post" action="run"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
+{% if admin %}<form method="post" action="run"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
 <a class="btn" href="export.csv">CSV exportieren</a></form></section>
-<section><h3>Soll-/Ist-Vergleich</h3><form method="post" action="target">
+<section><h3>Soll-/Ist-Vergleich</h3>{% if admin %}<form method="post" action="target"><input type="hidden" name="csrf_token" value="{{csrf_token}}">
 <label>Tarif <select id="tariff" name="tariff" onchange="tarifwahl()">
 {% for t in tariffs %}<option value="{{t[0]}}" data-down="{{t[2]}}" data-up="{{t[3]}}" {% if t[0]==tariff.tariff %}selected{% endif %}>{{t[1]}}</option>{% endfor %}
 </select></label>
 <label>Download Soll (Mbit/s) <input id="down" name="download" type="number" step="0.01" min="0.01" max="100000" required value="{{tariff.download}}"></label>
 <label>Upload Soll (Mbit/s) <input id="up" name="upload" type="number" step="0.01" min="0.01" max="100000" required value="{{tariff.upload}}"></label>
-<button>Tarif speichern</button></form>
+<button>Tarif speichern</button></form>{% else %}<p>Tarif: {{tariff.tariff}} · Soll: {{tariff.download}} / {{tariff.upload}} Mbit/s</p>{% endif %}
 <p><small>Tarife zeigen beispielhafte beworbene Maximalgeschwindigkeiten. Für verbindliche Werte deinen Vertrag bzw. das Produktinformationsblatt prüfen.</small></p>
 {% if last %}<div class="grid">
 <div class="metric">Download Ist <b>{{'%.2f'|format(last.download_mbps)}} Mbit/s</b>
@@ -290,16 +307,16 @@ Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100
 <div class="chartbox"><h4>Ping (ms)</h4><canvas id="pingChart" role="img" aria-label="Ping-Verlauf"></canvas></div></div>
 <p class="small">Die Statistik berücksichtigt erfolgreiche Messungen im gewählten Zeitraum. Fehler werden in der Erfolgsquote mitgezählt. Die Diagramme zeigen gemessene Werte, keine vertragliche Bewertung.</p>
 </section>
-<section class="wrap"><h3>Messprotokoll ({{total}} Datensätze)</h3><table><thead><tr><th>Zeit</th><th>Quelle</th><th>Download</th><th>Upload</th><th>Ping</th><th>Status</th><th>Löschen</th></tr></thead>
+<section class="wrap"><h3>Messprotokoll ({{total}} Datensätze)</h3><table><thead><tr><th>Zeit</th><th>Quelle</th><th>Download</th><th>Upload</th><th>Ping</th><th>Status</th>{% if admin %}<th>Löschen</th>{% endif %}</tr></thead>
 <tbody>{% for r in rows %}<tr><td>{{r.started_at[:19].replace('T',' ')}}</td><td>{{r.source}}</td>
 <td>{{'%.2f'|format(r.download_mbps) if r.download_mbps is not none else '–'}}</td>
 <td>{{'%.2f'|format(r.upload_mbps) if r.upload_mbps is not none else '–'}}</td>
 <td>{{'%.1f'|format(r.ping_ms) if r.ping_ms is not none else '–'}}</td><td title="{{r.error or ''}}">{{r.status}}</td>
-<td><form method="post" action="delete/{{r.id}}" onsubmit="return confirm('Datensatz endgültig löschen?')">
-<button class="danger">Löschen</button></form></td></tr>{% endfor %}</tbody></table>
+{% if admin %}<td><form method="post" action="delete/{{r.id}}" onsubmit="return confirm('Datensatz endgültig löschen?')"><input type="hidden" name="csrf_token" value="{{csrf_token}}">
+<button class="danger">Löschen</button></form></td>{% endif %}</tr>{% endfor %}</tbody></table>
 <p><small>Nur die letzten 100 werden angezeigt, CSV exportiert alle.</small></p>
-<form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE gespeicherten Messungen endgültig löschen? Eine gerade laufende Messung kann danach neu erscheinen.')">
-<button class="danger">Alle Messungen löschen</button></form></section>
+{% if admin %}<form method="post" action="delete-all" onsubmit="return confirm('ACHTUNG: ALLE gespeicherten Messungen endgültig löschen? Eine gerade laufende Messung kann danach neu erscheinen.')"><input type="hidden" name="csrf_token" value="{{csrf_token}}">
+<button class="danger">Alle Messungen löschen</button></form>{% endif %}</section>
 <script>
 const HISTORY = {{ history|tojson }};
 const TARGET = {{ tariff|tojson }};
@@ -371,7 +388,7 @@ def home():
                 "ping": r["ping_ms"]} for r in history_rows]
     return render_template_string(PAGE, cfg=settings(), status=status, rows=rows,
                                   last=last, total=total, tariff=get_target(),
-                                  tariffs=TARIFFS, history=history)
+                                  tariffs=TARIFFS, history=history, admin=g.is_admin, csrf_token=CSRF_TOKEN)
 
 
 @app.post("/target")
@@ -448,4 +465,5 @@ if __name__ == "__main__":
     if settings()["run_on_start"]:
         run_test("startup")
     threading.Thread(target=scheduler, daemon=True).start()
+    MqttBridge(connection, get_target, run_test).start()
     app.run(host="0.0.0.0", port=8099, threaded=True)
