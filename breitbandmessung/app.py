@@ -75,10 +75,49 @@ def measure(timeout_minutes):
         try:
             browser.set_page_load_timeout(60)
             browser.get("https://breitbandmessung.de/test")
-            wait = WebDriverWait(browser, 35)
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#allow-necessary"))).click()
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button.btn:nth-child(4)"))).click()
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button.btn:nth-child(2)"))).click()
+            # The website has animated overlays; Selenium's "clickable" state
+            # alone does not guarantee that an element is unobstructed.
+            from selenium.common.exceptions import (
+                ElementClickInterceptedException, StaleElementReferenceException,
+                TimeoutException, NoSuchElementException,
+            )
+
+            def click_when_ready(selector, label, timeout=45):
+                deadline = time.monotonic() + timeout
+                last_error = None
+                while time.monotonic() < deadline:
+                    try:
+                        element = browser.find_element(By.CSS_SELECTOR, selector)
+                        if not element.is_displayed() or not element.is_enabled():
+                            time.sleep(0.6)
+                            continue
+                        browser.execute_script(
+                            "arguments[0].scrollIntoView({block:'center', inline:'center'});",
+                            element,
+                        )
+                        time.sleep(0.4)
+                        try:
+                            element.click()
+                        except ElementClickInterceptedException as exc:
+                            # Fall back to a DOM click for a known visible/enabled
+                            # button when a transparent/animated overlay intercepts.
+                            last_error = exc
+                            browser.execute_script("arguments[0].click();", element)
+                        log.info("Website step completed: %s", label)
+                        return
+                    except (NoSuchElementException, StaleElementReferenceException,
+                            ElementClickInterceptedException) as exc:
+                        last_error = exc
+                        time.sleep(0.8)
+                raise TimeoutError(
+                    f"Website button '{label}' ({selector}) not available: {last_error}"
+                )
+
+            click_when_ready("#allow-necessary", "Cookies")
+            time.sleep(2)
+            click_when_ready("button.btn:nth-child(4)", "Start")
+            time.sleep(1)
+            click_when_ready("button.btn:nth-child(2)", "Datenschutz")
 
             deadline = time.monotonic() + timeout_minutes * 60
             while time.monotonic() < deadline:
