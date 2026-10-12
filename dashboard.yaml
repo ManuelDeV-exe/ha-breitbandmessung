@@ -1,0 +1,46 @@
+# Home Assistant Dashboard: Breitbandmessung Logger
+# Voraussetzung: Mosquitto broker + Home Assistant MQTT-Integration.
+# Nach Installation/Start des Add-ons die Entitäten unter Einstellungen ->
+# Geräte & Dienste -> MQTT -> Breitbandmessung Logger prüfen.
+# Diesen Abschnitt als *eine Karte* über "Manuell / YAML" einfügen.
+# Entitäts-IDs gegebenenfalls an die in deinem System vergebenen Namen anpassen.
+type: vertical-stack
+cards:
+  - type: markdown
+    content: "## Internetgeschwindigkeit\nMesswerte von breitbandmessung.de"
+  - type: entities
+    title: Aktuelle Breitbandmessung
+    entities:
+      - entity: sensor.breitbandmessung_download
+        name: Download (Mbit/s)
+      - entity: sensor.breitbandmessung_upload
+        name: Upload (Mbit/s)
+      - entity: sensor.breitbandmessung_ping
+        name: Ping (ms)
+      - entity: sensor.breitbandmessung_download_percent
+        name: Download vom Soll
+      - entity: sensor.breitbandmessung_upload_percent
+        name: Upload vom Soll
+      - entity: sensor.breitbandmessung_tests
+        name: Messungen gesamt
+  - type: history-graph
+    title: Download und Upload – letzte 48 Stunden
+    hours_to_show: 48
+    entities:
+      - entity: sensor.breitbandmessung_download
+      - entity: sensor.breitbandmessung_upload
+  - type: history-graph
+    title: Ping – letzte 48 Stunden
+    hours_to_show: 48
+    entities:
+      - entity: sensor.breitbandmessung_ping
+  - type: button
+    entity: button.breitbandmessung_messung_starten
+    name: Messung jetzt starten
+    icon: mdi:speedometer
+    show_state: false
+    tap_action:
+      action: perform-action
+      perform_action: button.press
+      target:
+        entity_id: button.breitbandmessung_messung_starten
