@@ -1,5 +1,5 @@
 name: Breitbandmessung Logger
-version: "0.4.2"
+version: "0.4.3"
 slug: breitbandmessung_logger
 description: Automatische Messungen auf breitbandmessung.de mit SQLite und CSV
 arch:
