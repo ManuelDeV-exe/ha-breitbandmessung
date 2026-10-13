@@ -303,6 +303,7 @@ Soll {{tariff.upload}} · {{'%.1f'|format(last.upload_mbps / tariff.upload * 100
 <option value="7">7 Tage</option><option value="30" selected>30 Tage</option><option value="90">90 Tage</option><option value="0">Gesamt</option>
 </select></label></div>
 <div id="analysisStats" class="grid stats" aria-live="polite"></div>
+<div class="charts"><div class="chartbox"><h4>Messungen nach Ergebnis</h4><canvas id="resultPie" role="img" aria-label="Tortendiagramm erfolgreiche und fehlgeschlagene Messungen"></canvas><div id="pieLegend" class="small"></div></div></div>
 <div class="charts"><div class="chartbox"><h4>Download und Upload (Mbit/s)</h4><canvas id="speedChart" role="img" aria-label="Download- und Upload-Verlauf"></canvas><small>Blau: Download · Grün: Upload · Zeitachse: Messdatum</small></div>
 <div class="chartbox"><h4>Ping (ms)</h4><canvas id="pingChart" role="img" aria-label="Ping-Verlauf"></canvas></div></div>
 <p class="small">Die Statistik berücksichtigt erfolgreiche Messungen im gewählten Zeitraum. Fehler werden in der Erfolgsquote mitgezählt. Die Diagramme zeigen gemessene Werte, keine vertragliche Bewertung.</p>
@@ -354,6 +355,23 @@ ctx.stroke();if(rows.length<=40)rows.forEach((r,i)=>{ctx.beginPath();ctx.arc(xAt
 ctx.fillStyle=dark;ctx.textAlign='left';ctx.fillText(first.slice(0,10),left,top+h+19);
 ctx.textAlign='right';ctx.fillText(last.slice(0,10),left+w,top+h+19);
 }
+function drawPie(rows){
+const canvas=document.getElementById('resultPie'),legend=document.getElementById('pieLegend');
+const width=Math.max(280,canvas.parentElement.clientWidth-24),height=235,dpr=window.devicePixelRatio||1;
+canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);
+const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,width,height);
+const ok=rows.filter(r=>r.status==='ok').length,errors=rows.length-ok;
+const fg=getComputedStyle(document.body).color;
+if(!rows.length){ctx.font='14px system-ui';ctx.fillStyle=fg;ctx.fillText('Noch keine Messungen im Zeitraum',20,110);legend.textContent='';return}
+const colors=['#29a779','#d45b61'],values=[ok,errors];let angle=-Math.PI/2;
+const x=width/2,y=height/2,rad=Math.min(88,width/4);
+values.forEach((value,i)=>{if(!value)return;const next=angle+2*Math.PI*value/rows.length;
+ctx.beginPath();ctx.moveTo(x,y);ctx.arc(x,y,rad,angle,next);ctx.closePath();ctx.fillStyle=colors[i];ctx.fill();angle=next});
+ctx.beginPath();ctx.arc(x,y,rad*.54,0,2*Math.PI);ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();ctx.fill();
+ctx.fillStyle=fg;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 23px system-ui';ctx.fillText(nfmt(ok/rows.length*100,1)+' %',x,y-9);
+ctx.font='12px system-ui';ctx.fillText('Erfolgsquote',x,y+15);
+legend.textContent='🟢 Erfolgreich: '+ok+' · 🔴 Fehlgeschlagen: '+errors;
+}
 function renderAnalytics(){
 const period=Number(document.getElementById('period').value),now=Date.now();
 const records=HISTORY.filter(r=>period===0||Date.parse(r.timestamp)>=now-period*86400000);
@@ -367,6 +385,7 @@ stats.innerHTML='<div class="metric">Ø Download <strong>'+nfmt(avgDl,2)+' Mbit/
 '<div class="metric">Erfolgsquote <strong>'+nfmt(valid.length/records.length*100,1)+' %</strong><div>'+valid.length+' von '+records.length+' Tests</div></div>';
 }else{stats.textContent='Noch keine erfolgreichen Messungen im gewählten Zeitraum ('+records.length+' Versuche).'}
 drawChart('speedChart',valid,['download','upload']);drawChart('pingChart',valid,['ping']);
+drawPie(records);
 }
 setTheme(themePreference());
 window.addEventListener('resize',renderAnalytics);
