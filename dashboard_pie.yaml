@@ -1,0 +1,14 @@
+# Optionale Home-Assistant-Karte für das öffentliche gemeinsame Dashboard
+# Benötigt 'ApexCharts Card' über HACS (custom:apexcharts-card).
+# Zunächst Add-on >=0.4.3 aktualisieren und MQTT-Erkennung abwarten.
+# Diese Karte im Dashboard unter 'Karte hinzufügen -> Manuell' einfügen.
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Breitbandmessung – Erfolgreich / Fehler
+chart_type: pie
+series:
+  - entity: sensor.breitbandmessung_tests_success
+    name: Erfolgreich
+  - entity: sensor.breitbandmessung_tests_error
+    name: Fehlgeschlagen
