@@ -71,3 +71,24 @@ Die MQTT-Anbindung ist optional. Ohne MQTT bleiben die Add-on-Oberfläche, SQLit
 
 ### Hinweise zur Absicherung
 Keine zusätzlichen Netzwerkports am Host veröffentlichen. Die Administrationsberechtigung wird serverseitig anhand der Benutzer-ID geprüft; eigene reverse proxies dürfen die Ingress-Header nicht ungeprüft selbst setzen. Dieses Release wurde noch nicht in einer realen Home-Assistant-Installation durchgetestet.
+
+## 0.4.3 – Gemeinsames Dashboard und Tortendiagramm
+
+- In der Add-on-Weboberfläche zeigt das neue Donut-/Tortendiagramm erfolgreiche gegen fehlgeschlagene Messversuche; der gewählte Zeitraum (7/30/90 Tage/Gesamt) wird berücksichtigt.
+- Für Home Assistant stehen zusätzlich die MQTT-Entitäten `sensor.breitbandmessung_tests_success` und `sensor.breitbandmessung_tests_error` zur Verfügung.
+- Ein optionales Tortendiagramm für Lovelace ist unter [dashboard_pie.yaml](../dashboard_pie.yaml) hinterlegt. Es benötigt die **ApexCharts Card** aus HACS.
+- Das normale Messwerte-Dashboard ist weiter unter [dashboard.yaml](../dashboard.yaml) verfügbar.
+
+### Dashboard für alle Home-Assistant-Benutzer sichtbar machen
+
+**Wichtig:** Eine in GitHub gespeicherte Lovelace-Vorlage erscheint nicht automatisch als Dashboard bei allen Benutzern. Das Add-on kann ein vorhandenes Home-Assistant-Dashboard nicht ohne weitere Einrichtung global anlegen oder dessen Benutzersichtbarkeit einstellen.
+
+1. Home Assistant als Administrator öffnen → **Einstellungen → Dashboards** → neues Dashboard `Breitbandmessung` erstellen.
+2. Option **Nur für Administratoren** **deaktivieren**, **In Seitenleiste anzeigen** aktivieren und nicht auf einzelne Benutzer einschränken.
+3. Dashboard bearbeiten → **Karte hinzufügen → Manuell**, Inhalt aus `dashboard.yaml` einfügen.
+4. Optional HACS → ApexCharts Card installieren, dann `dashboard_pie.yaml` als **weitere** manuelle Karte hinzufügen.
+5. Als normaler Benutzer ab- und wieder anmelden und die Sichtbarkeit prüfen.
+
+Die Add-on-Seitenleiste hat schon `panel_admin: false`, sofern die Home-Assistant-Installation die Ingress-Freigabe für Nicht-Administratoren unterstützt.
+
+**Sicherheit:** Der MQTT-Startbutton ist nicht durch die Add-on-Weboberflächen-Rechteprüfung geschützt. Auf einem Dashboard für alle Benutzer kann er von Benutzern mit entsprechender Home-Assistant-Berechtigung ausgelöst werden. Für ein rein lesendes Dashboard den Startbutton aus der Vorlage entfernen oder getrennt nur Administratoren bereitstellen.
