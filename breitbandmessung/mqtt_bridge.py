@@ -23,7 +23,9 @@ SENSORS = [
     ("ping", "Ping", "ms", "measurement", None),
     ("download_percent", "Download Soll erreicht", "%", "measurement", None),
     ("upload_percent", "Upload Soll erreicht", "%", "measurement", None),
-    ("tests", "Messungen gesamt", None, "total_increasing", None),
+    ("tests", "Messungen gesamt", None, "measurement", None),
+    ("tests_success", "Erfolgreiche Messungen", None, "measurement", None),
+    ("tests_error", "Fehlgeschlagene Messungen", None, "measurement", None),
 ]
 
 
@@ -137,9 +139,14 @@ class MqttBridge:
             latest = conn.execute(
                 "SELECT * FROM measurements WHERE status='ok' ORDER BY id DESC LIMIT 1"
             ).fetchone()
-            total = conn.execute("SELECT COUNT(*) FROM measurements").fetchone()[0]
+            counts = conn.execute(
+                "SELECT status, COUNT(*) AS n FROM measurements GROUP BY status"
+            ).fetchall()
+            success_count = sum(int(r["n"]) for r in counts if r["status"] == "ok")
+            error_count = sum(int(r["n"]) for r in counts if r["status"] != "ok")
+            total = success_count + error_count
         target = self.target_getter()
-        state = {"tests": total}
+        state = {"tests": total, "tests_success": success_count, "tests_error": error_count}
         if latest:
             down = float(latest["download_mbps"])
             up = float(latest["upload_mbps"])
