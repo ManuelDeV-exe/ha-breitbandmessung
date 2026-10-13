@@ -34,6 +34,8 @@ cards:
     hours_to_show: 48
     entities:
       - entity: sensor.breitbandmessung_ping
+  # ACHTUNG: Gemeinsames Dashboard: der Startbutton kann von allen
+  # berechtigten Nutzern bedient werden. Für reine Leseansicht Karte entfernen.
   - type: button
     entity: button.breitbandmessung_messung_starten
     name: Messung jetzt starten
