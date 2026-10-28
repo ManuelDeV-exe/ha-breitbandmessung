@@ -156,8 +156,44 @@ def measure(timeout_minutes):
                     f"Website button '{label}' ({selector}) not available: {last_error}"
                 )
 
-            click_when_ready("#allow-necessary", "Cookies")
-            time.sleep(2)
+            # Cookie banners are optional (already accepted, delayed, or redesigned).
+            # Only click a visible consent button. Never treat a missing banner
+            # as a fatal error or invent cookies to skip a consent decision.
+            def accept_optional_cookies():
+                selectors = [
+                    "#allow-necessary",
+                    "button[id*='necessary']",
+                    "button[data-testid*='necessary']",
+                ]
+                for _ in range(12):
+                    for selector in selectors:
+                        for element in browser.find_elements(By.CSS_SELECTOR, selector):
+                            if element.is_displayed() and element.is_enabled():
+                                try:
+                                    element.click()
+                                    log.info("Cookie-Auswahl bestätigt: %s", selector)
+                                    return
+                                except ElementClickInterceptedException:
+                                    pass
+                    for element in browser.find_elements(By.TAG_NAME, "button"):
+                        if element.is_displayed() and element.is_enabled():
+                            label = " ".join(element.text.lower().split())
+                            if ("notwendige cookies" in label or
+                                    "necessary cookies" in label or
+                                    "nur notwendige" in label):
+                                try:
+                                    element.click()
+                                    log.info("Cookie-Auswahl per Beschriftung bestätigt")
+                                    return
+                                except ElementClickInterceptedException:
+                                    pass
+                    time.sleep(0.5)
+                log.info("Kein Cookie-Dialog sichtbar; fahre mit normalem Seitenablauf fort")
+
+            accept_optional_cookies()
+            time.sleep(1)
+            if "JavaScript ist erforderlich" in browser.find_element(By.TAG_NAME, "body").text:
+                raise RuntimeError("Website wurde ohne funktionierende JavaScript-App geladen")
             click_when_ready("button.btn:nth-child(4)", "Start")
             time.sleep(1)
             click_when_ready("button.btn:nth-child(2)", "Datenschutz")
