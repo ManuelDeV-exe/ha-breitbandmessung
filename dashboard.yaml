@@ -4,6 +4,7 @@
 # Geräte & Dienste -> MQTT -> Breitbandmessung Logger prüfen.
 # Diesen Abschnitt als *eine Karte* über "Manuell / YAML" einfügen.
 # Entitäts-IDs gegebenenfalls an die in deinem System vergebenen Namen anpassen.
+# Live-Fortschritt benötigt Add-on-Version 0.5.1 oder neuer.
 type: vertical-stack
 cards:
   - type: markdown
@@ -23,6 +24,28 @@ cards:
         name: Upload vom Soll
       - entity: sensor.breitbandmessung_tests
         name: Messungen gesamt
+  - type: gauge
+    entity: sensor.breitbandmessung_progress
+    name: Messfortschritt
+    unit: "%"
+    min: 0
+    max: 100
+    needle: true
+    severity:
+      red: 0
+      yellow: 30
+      green: 85
+  - type: entities
+    title: Laufende Messung
+    entities:
+      - entity: sensor.breitbandmessung_message
+        name: Aktueller Status
+      - entity: sensor.breitbandmessung_phase
+        name: Messphase
+      - entity: sensor.breitbandmessung_elapsed_seconds
+        name: Vergangene Zeit
+      - entity: sensor.breitbandmessung_progress
+        name: Fortschritt
   - type: history-graph
     title: Download und Upload – letzte 48 Stunden
     hours_to_show: 48
