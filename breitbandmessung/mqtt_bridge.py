@@ -13,6 +13,7 @@ BASE = "breitbandmessung"
 STATE_TOPIC = BASE + "/state"
 COMMAND_TOPIC = BASE + "/command/test"
 AVAIL_TOPIC = BASE + "/availability"
+BUTTON_AVAIL_TOPIC = BASE + "/button_availability"
 DEVICE = {"identifiers": ["breitbandmessung_logger"],
           "name": "Breitbandmessung Logger", "manufacturer": "Community",
           "model": "Breitbandmessung Webtest"}
@@ -30,10 +31,12 @@ SENSORS = [
 
 
 class MqttBridge:
-    def __init__(self, db_connect, target_getter, start_test):
+    def __init__(self, db_connect, target_getter, start_test, test_status):
         self.db_connect = db_connect
         self.target_getter = target_getter
         self.start_test = start_test
+        self.test_status = test_status
+        self.last_button_available = None
         self.client = None
         self.connected = False
         self.last_state = None
@@ -61,7 +64,7 @@ class MqttBridge:
             "name": "Messung starten", "unique_id": "bbm_start",
             "default_entity_id": "button.breitbandmessung_messung_starten",
             "command_topic": COMMAND_TOPIC, "payload_press": "PRESS",
-            "availability_topic": AVAIL_TOPIC, "device": DEVICE,
+            "availability_topic": BUTTON_AVAIL_TOPIC, "device": DEVICE,
         }
         client.publish("homeassistant/button/bbm_start/config",
                        json.dumps(button), qos=1, retain=True)
@@ -96,6 +99,7 @@ class MqttBridge:
                         self._discovery(client)
                         client.publish(AVAIL_TOPIC, "online", qos=1, retain=True)
                         client.subscribe(COMMAND_TOPIC)
+                        self.last_button_available = None
                         self.last_state = None
                     else:
                         self.connected = False
@@ -123,7 +127,7 @@ class MqttBridge:
                         raise RuntimeError('MQTT-Verbindungsaufbau fehlgeschlagen')
                     while client.is_connected():
                         self.publish_state()
-                        time.sleep(15)
+                        time.sleep(2)
                 finally:
                     self.connected = False
                     client.loop_stop()
@@ -135,6 +139,10 @@ class MqttBridge:
     def publish_state(self):
         if not self.connected or not self.client:
             return
+        availability = "offline" if self.test_status()["running"] else "online"
+        if availability != self.last_button_available:
+            self.client.publish(BUTTON_AVAIL_TOPIC, availability, qos=1, retain=True)
+            self.last_button_available = availability
         with self.db_connect() as conn:
             latest = conn.execute(
                 "SELECT * FROM measurements WHERE status='ok' ORDER BY id DESC LIMIT 1"
