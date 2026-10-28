@@ -54,8 +54,9 @@ class MqttBridge:
                 "value_template": "{{ value_json." + key + " }}",
                 "availability_topic": AVAIL_TOPIC,
                 "device": DEVICE,
-                "state_class": state_class,
             }
+            if state_class:
+                config["state_class"] = state_class
             if unit:
                 config["unit_of_measurement"] = unit
             if device_class:
