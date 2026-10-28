@@ -27,6 +27,10 @@ SENSORS = [
     ("tests", "Messungen gesamt", None, "measurement", None),
     ("tests_success", "Erfolgreiche Messungen", None, "measurement", None),
     ("tests_error", "Fehlgeschlagene Messungen", None, "measurement", None),
+    ("progress", "Messfortschritt", "%", "measurement", None),
+    ("elapsed_seconds", "Messdauer", "s", "measurement", None),
+    ("phase", "Messphase", None, None, None),
+    ("message", "Messstatus", None, None, None),
 ]
 
 
@@ -154,7 +158,16 @@ class MqttBridge:
             error_count = sum(int(r["n"]) for r in counts if r["status"] != "ok")
             total = success_count + error_count
         target = self.target_getter()
-        state = {"tests": total, "tests_success": success_count, "tests_error": error_count}
+        live = self.test_status()
+        started = live.get("started_monotonic")
+        state = {
+            "tests": total, "tests_success": success_count, "tests_error": error_count,
+            "progress": int(live.get("progress", 0)),
+            "phase": str(live.get("phase", "idle")),
+            "message": str(live.get("message", "Bereit"))[:240],
+            "elapsed_seconds": max(0, round(time.monotonic() - started)) if live.get("running") and started else 0,
+            "running": bool(live.get("running"))
+        }
         if latest:
             down = float(latest["download_mbps"])
             up = float(latest["upload_mbps"])
