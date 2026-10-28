@@ -338,8 +338,13 @@ button:disabled{opacity:.5;cursor:not-allowed}.danger{background:#bd2929}
 canvas{width:100%;height:235px;display:block} .chartbox{border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
 .chartbox h4{margin:4px 0 8px}.stats{margin:12px 0}.stats strong{font-size:19px}
 </style></head><body><main><div class="head"><h2>Breitbandmessung Logger</h2><button type="button" id="themeButton" onclick="toggleTheme()" aria-label="Darstellung umschalten">Darstellung: Auto</button></div>
-<section><p><b>Status:</b> {{status.message}}</p><p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
-{% if admin %}<form method="post" action="run"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button {% if status.running %}disabled{% endif %}>Jetzt messen</button>
+<section><p><b>Status:</b> <span id="testMessage">{{status.message}}</span></p>
+<div id="testProgressPanel" role="status" aria-live="polite">
+<div style="height:14px;background:var(--line);border-radius:20px;overflow:hidden">
+<div id="testProgressBar" style="height:100%;width:{{status.progress}}%;background:var(--blue);transition:width .35s"></div></div>
+<p class="small"><span id="testPhase">{{status.phase}}</span> · <span id="testPercent">{{status.progress}}</span> % · <span id="testElapsed">0</span> s</p></div>
+<p>Messungen pro Tag: {{cfg.tests_per_day}} · Zeitzone: {{cfg.timezone}}</p>
+{% if admin %}<form method="post" action="run"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button id="startMeasurement" {% if status.running %}disabled{% endif %}>Jetzt messen</button>
 </form>{% endif %}<a class="btn" href="export.csv">CSV exportieren</a></section>
 <section><h3>Soll-/Ist-Vergleich</h3>{% if admin %}<form method="post" action="target"><input type="hidden" name="csrf_token" value="{{csrf_token}}">
 <label>Tarif <select id="tariff" name="tariff" onchange="tarifwahl()">
@@ -445,6 +450,24 @@ stats.innerHTML='<div class="metric">Ø Download <strong>'+nfmt(avgDl,2)+' Mbit/
 drawChart('speedChart',valid,['download','upload']);drawChart('pingChart',valid,['ping']);
 drawPie(records);
 }
+async function refreshMeasurement(){
+try{
+const response=await fetch('api/status',{cache:'no-store'});
+if(!response.ok)return;
+const data=await response.json();
+document.getElementById('testMessage').textContent=data.message;
+document.getElementById('testPhase').textContent=data.phase;
+document.getElementById('testPercent').textContent=data.progress;
+document.getElementById('testElapsed').textContent=data.elapsed_seconds;
+document.getElementById('testProgressBar').style.width=data.progress+'%';
+const start=document.getElementById('startMeasurement');
+if(start){start.disabled=data.running;start.textContent=data.running?'Messung läuft …':'Jetzt messen';}
+if(window.bbmWasRunning===true && !data.running){window.location.reload();}
+window.bbmWasRunning=data.running;
+}catch(e){/* interrupted connection: next poll retries */}
+}
+refreshMeasurement();
+setInterval(refreshMeasurement,2000);
 setTheme(themePreference());
 window.addEventListener('resize',renderAnalytics);
 if(window.matchMedia){const mq=window.matchMedia('(prefers-color-scheme: dark)');if(mq.addEventListener)mq.addEventListener('change',renderAnalytics)}
@@ -508,8 +531,21 @@ def delete_all():
 
 @app.post("/run")
 def manual():
-    run_test("manual")
+    if not run_test("manual"):
+        return redirect("./?busy=1", code=303)
     return redirect("./", code=303)
+
+
+@app.get("/api/status")
+def api_status():
+    started = status.get("started_monotonic")
+    return jsonify({
+        "running": status["running"],
+        "message": status["message"],
+        "phase": status["phase"],
+        "progress": status["progress"],
+        "elapsed_seconds": round(time.monotonic()-started) if started else 0
+    })
 
 
 @app.get("/api/latest")
