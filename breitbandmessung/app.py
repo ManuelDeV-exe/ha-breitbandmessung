@@ -40,7 +40,14 @@ def check_ingress_access():
             abort(403, "Formular ungültig")
 
 lock = threading.Lock()
-status = {"running": False, "message": "Bereit", "last_attempt": None}
+status = {"running": False, "message": "Bereit", "last_attempt": None, "phase": "idle", "progress": 0, "started_monotonic": None}
+
+def progress(phase, value, message=None):
+    status["phase"] = phase
+    status["progress"] = max(0, min(100, int(value)))
+    if message is not None:
+        status["message"] = message
+
 
 
 def settings():
@@ -106,6 +113,7 @@ def measure(timeout_minutes):
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
 
+    progress("browser", 5, "Browser wird vorbereitet")
     with tempfile.TemporaryDirectory(prefix="bbm-") as folder:
         options = Options()
         options.add_argument("-headless")
@@ -117,6 +125,7 @@ def measure(timeout_minutes):
         browser = webdriver.Firefox(options=options, service=Service("/usr/bin/geckodriver"))
         try:
             browser.set_page_load_timeout(60)
+            progress("website", 12, "Webseite wird geöffnet")
             browser.get("https://breitbandmessung.de/test")
             # The website has animated overlays; Selenium's "clickable" state
             # alone does not guarantee that an element is unobstructed.
@@ -190,23 +199,33 @@ def measure(timeout_minutes):
                     time.sleep(0.5)
                 log.info("Kein Cookie-Dialog sichtbar; fahre mit normalem Seitenablauf fort")
 
+            progress("consent", 20, "Cookie-Dialog wird geprüft")
             accept_optional_cookies()
             time.sleep(1)
             if "JavaScript ist erforderlich" in browser.find_element(By.TAG_NAME, "body").text:
                 raise RuntimeError("Website wurde ohne funktionierende JavaScript-App geladen")
+            progress("start", 30, "Messung wird gestartet")
             click_when_ready("button.btn:nth-child(4)", "Start")
             time.sleep(1)
             click_when_ready("button.btn:nth-child(2)", "Datenschutz")
+            progress("measuring", 40, "Download, Upload und Ping werden gemessen")
 
             deadline = time.monotonic() + timeout_minutes * 60
+            measurement_started = time.monotonic()
             while time.monotonic() < deadline:
                 if "abgeschlossen" in browser.find_element(By.TAG_NAME, "body").text.lower():
-                    browser.find_element(By.CSS_SELECTOR, "button.px-0:nth-child(1)").click()
+                    progress("export", 85, "Messung abgeschlossen – CSV wird exportiert")
+                    click_when_ready("button.px-0:nth-child(1)", "CSV-Export", timeout=30)
                     break
+                elapsed = time.monotonic() - measurement_started
+                # Phase indicator, not an actual byte-level test percentage.
+                progress("measuring", min(80, 40 + int(elapsed / 15)),
+                         "Download, Upload und Ping werden gemessen")
                 time.sleep(3)
             else:
                 raise TimeoutError("Messung hat das Zeitlimit überschritten")
 
+            progress("csv", 90, "Ergebnisdatei wird eingelesen")
             for _ in range(30):
                 files = [p for p in Path(folder).glob("*.csv") if p.stat().st_size > 0]
                 if files and not list(Path(folder).glob("*.part")):
@@ -225,6 +244,7 @@ def measure(timeout_minutes):
                     raise ValueError(f"Ungültiger Messwert: {key}={value}")
                 return float(found.group())
 
+            progress("save", 95, "Messwerte werden gespeichert")
             return (numeric("Download (Mbit/s)"), numeric("Upload (Mbit/s)"),
                     numeric("Laufzeit (ms)"), raw)
         finally:
@@ -236,7 +256,8 @@ def run_test(source):
         return False
 
     status["running"] = True
-    status["message"] = "Messung läuft"
+    status["started_monotonic"] = time.monotonic()
+    progress("queued", 2, "Messung wird vorbereitet")
 
     def worker():
         start = datetime.now(ZoneInfo("Europe/Berlin"))
@@ -249,11 +270,11 @@ def run_test(source):
             status["last_attempt"] = start.isoformat()
             dl, ul, ping, raw = measure(cfg["timeout_minutes"])
             result.update(download_mbps=dl, upload_mbps=ul, ping_ms=ping, raw_csv=raw)
-            status["message"] = f"Erfolgreich: {dl:.2f} ↓ / {ul:.2f} ↑ Mbit/s"
+            progress("done", 100, f"Erfolgreich: {dl:.2f} ↓ / {ul:.2f} ↑ Mbit/s")
             log.info("Download %.2f Mbit/s, Upload %.2f Mbit/s, Ping %.2f ms", dl, ul, ping)
         except Exception as exc:
             result.update(status="error", error=str(exc)[:1000])
-            status["message"] = f"Fehler: {exc}"
+            progress("error", status["progress"], f"Fehler: {exc}")
             log.exception("Messung fehlgeschlagen")
         finally:
             end = datetime.now(start.tzinfo)
@@ -271,6 +292,7 @@ def run_test(source):
                 log.exception("Datenbankfehler beim Speichern")
             finally:
                 status["running"] = False
+                status["started_monotonic"] = None
                 lock.release()
 
     threading.Thread(target=worker, daemon=True).start()
